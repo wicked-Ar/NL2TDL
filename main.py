@@ -86,7 +86,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     # LLM selection (env remains the default)
     parser.add_argument(
         "--provider",
-        choices=["ollama", "hf", "none"],
+        choices=["ollama", "hf", "gemini", "none"],
         help=(
             "LLM provider override. If omitted, uses environment (NL2TDL_LLM_PROVIDER) or heuristic fallback."
         ),
@@ -112,7 +112,7 @@ def resolve_llm_from_args(namespace: argparse.Namespace):
 
     - If --provider is 'none', returns None (heuristic mode)
     - If --provider is omitted, use get_llm_from_env()
-    - If --provider is set to 'ollama' or 'hf', use env defaults where args are missing
+    - If --provider is set to 'ollama', 'hf', or 'gemini', use env defaults where args are missing
     """
     provider = getattr(namespace, "provider", None)
     if provider == "none":
@@ -121,7 +121,8 @@ def resolve_llm_from_args(namespace: argparse.Namespace):
         return get_llm_from_env()
 
     # Late import to avoid unnecessary dependencies at startup
-    from nl2tdl.llm_client import OllamaLLM, HuggingFaceLLM
+    from nl2tdl.llm_client import OllamaLLM, HuggingFaceLLM, GeminiLLM
+    import os
 
     if provider == "ollama":
         model = namespace.llm_model or "gemma:2b"
@@ -132,6 +133,11 @@ def resolve_llm_from_args(namespace: argparse.Namespace):
         model = namespace.llm_model or "google/gemma-2b-it"
         device = namespace.llm_device
         return HuggingFaceLLM(model=model, device=device)
+    
+    if provider == "gemini":
+        model = namespace.llm_model or os.getenv("NL2TDL_LLM_MODEL", "gemini-1.5-flash")
+        api_key = os.getenv("GEMINI_API_KEY")
+        return GeminiLLM(model=model, api_key=api_key)
 
     return None
 
