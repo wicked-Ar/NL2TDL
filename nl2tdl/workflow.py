@@ -16,6 +16,7 @@ from .requirement_analysis import analyze_requirement
 from .robot_selector import EvaluationCriteria, evaluate_robots, load_robot_specs
 from .tdl_generator import generate_tdl_document
 from .validators import build_validation_report, verify_tdl
+from .llm_client import get_llm_from_env, BaseLLM
 
 
 @dataclass
@@ -36,14 +37,17 @@ class NL2TDLWorkflow:
         model: str,
         robot_database: Path,
         evaluation_criteria: EvaluationCriteria | None = None,
+        llm: BaseLLM | None = None,
     ) -> None:
         self.manufacturer = manufacturer
         self.model = model
         self.robot_database = robot_database
         self.evaluation_criteria = evaluation_criteria or EvaluationCriteria()
+        # If not explicitly provided, attempt to resolve from env
+        self.llm = llm if llm is not None else get_llm_from_env()
 
     def run(self, requirement: str) -> WorkflowResult:
-        analysis = analyze_requirement(requirement)
+        analysis = analyze_requirement(requirement, llm=self.llm)
 
         tdl_document = generate_tdl_document(
             analysis=analysis,

@@ -1,4 +1,9 @@
-"""Natural language requirement analysis that prepares inputs for TDL generation."""
+"""Natural language requirement analysis that prepares inputs for TDL generation.
+
+This module supports two analysis modes:
+- Heuristic extraction (default, no external dependencies)
+- LLM-assisted extraction (optional), when an `llm` client is provided
+"""
 from __future__ import annotations
 
 import re
@@ -6,6 +11,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
 from .models import RequirementAnalysisResult
+from .llm_client import BaseLLM
 
 # Simple keyword dictionary for quick heuristics.
 ACTION_KEYWORDS = {
@@ -90,8 +96,8 @@ def extract_reach(requirement: str) -> float | None:
     return normalize_distance(value, unit)
 
 
-def analyze_requirement(requirement: str) -> RequirementAnalysisResult:
-    """Produce a light-weight semantic analysis of the natural language requirement."""
+def analyze_requirement_heuristic(requirement: str) -> RequirementAnalysisResult:
+    """Heuristic, dependency-free extraction for baseline analysis."""
 
     actions = detect_actions(requirement)
     objects = detect_object_terms(requirement)
@@ -120,3 +126,21 @@ def analyze_requirement(requirement: str) -> RequirementAnalysisResult:
         constraints=constraints,
         notes=notes,
     )
+
+
+def analyze_requirement(requirement: str, llm: BaseLLM | None = None) -> RequirementAnalysisResult:
+    """Produce a semantic analysis of the natural language requirement.
+
+    When an LLM client is provided, attempt LLM-based parsing first.
+    On error, fall back to heuristic extraction to ensure robustness.
+    """
+    if llm is not None:
+        try:
+            return llm.analyze_requirement(requirement)
+        except Exception:
+            # Fall back to heuristics if LLM fails for any reason
+            result = analyze_requirement_heuristic(requirement)
+            result.notes.append("LLM analysis failed; heuristic fallback applied.")
+            return result
+
+    return analyze_requirement_heuristic(requirement)

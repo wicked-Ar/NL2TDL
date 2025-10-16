@@ -25,3 +25,34 @@ python main.py
 ```
 
 The script prints the analysis results, generated TDL, validation/verification feedback, and a ranked list of candidate robots.
+
+## Optional: LLM Integration (Gemma via Ollama or Hugging Face)
+
+You can enable LLM-assisted requirement analysis to improve parsing quality.
+
+- Ollama (local, recommended for Gemma):
+  1. Install Ollama and pull a Gemma model (e.g., `gemma:2b`).
+  2. Set environment variables before running:
+     ```bash
+     export NL2TDL_LLM_PROVIDER=ollama
+     export NL2TDL_LLM_MODEL=gemma:2b
+     export NL2TDL_LLM_ENDPOINT=http://localhost:11434
+     python main.py
+     ```
+
+- Hugging Face Transformers:
+  1. Install dependencies:
+     ```bash
+     pip install transformers accelerate torch --extra-index-url https://download.pytorch.org/whl/cpu
+     ```
+  2. Set environment variables:
+     ```bash
+     export NL2TDL_LLM_PROVIDER=hf
+     export NL2TDL_LLM_MODEL=google/gemma-2b-it
+     # optional: NL2TDL_LLM_DEVICE=cuda:0
+     python main.py
+     ```
+
+Behavior:
+- If environment variables are not set or the model call fails, the system falls back to the built-in heuristic parser.
+- The LLM is prompted to output a strict JSON with fields accepted by the pipeline (actions, objects, locations, constraints like `payload_kg`, `reach_m`).
