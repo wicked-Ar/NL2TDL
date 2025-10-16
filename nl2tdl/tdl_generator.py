@@ -49,7 +49,7 @@ COMMAND_LIBRARY: Dict[str, CommandDefinition] = {
 
 
 def pick_command_names(actions: List[str]) -> List[str]:
-    sequence: List[str] = ["SetJointVelocity(30)"]
+    sequence: List[str] = []
     if "pick" in actions:
         sequence.extend([
             "SetTool(\"gripper\")",
@@ -63,13 +63,14 @@ def pick_command_names(actions: List[str]) -> List[str]:
             "WaitForDigitalInput(11, ON, 10.0)",
             "ReleaseObject()",
         ])
-    sequence.append("ReleaseCompliance()")
     return sequence
 
 
 def build_goals(analysis: RequirementAnalysisResult) -> List[GoalNode]:
     initialize_commands = ["SetJointVelocity(30)", "SetTool(\"gripper\")"]
     execute_commands = pick_command_names(analysis.detected_actions)
+    # Ensure ReleaseCompliance appears only once, in Finalize
+    execute_commands = [c for c in execute_commands if not c.startswith("ReleaseCompliance(")]
     finalize_commands = ["ReleaseCompliance()"]
 
     description_suffix = (

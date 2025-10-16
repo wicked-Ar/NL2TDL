@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from nl2tdl.robot_selector import EvaluationCriteria
+from nl2tdl.llm_client import get_llm_from_env
 from nl2tdl.workflow import NL2TDLWorkflow
 
 
@@ -16,6 +17,7 @@ def main() -> None:
         model="h2017",
         robot_database=Path("robots_db.json"),
         evaluation_criteria=EvaluationCriteria(),
+        llm=get_llm_from_env(),
     )
 
     result = workflow.run(requirement)
