@@ -26,33 +26,90 @@ python main.py
 
 The script prints the analysis results, generated TDL, validation/verification feedback, and a ranked list of candidate robots.
 
-## Optional: LLM Integration (Gemma via Ollama or Hugging Face)
+## Optional: LLM Integration
 
-You can enable LLM-assisted requirement analysis to improve parsing quality.
+You can enable LLM-assisted requirement analysis to improve parsing quality. Three providers are supported:
 
-- Ollama (local, recommended for Gemma):
-  1. Install Ollama and pull a Gemma model (e.g., `gemma:2b`).
-  2. Set environment variables before running:
-     ```bash
-     export NL2TDL_LLM_PROVIDER=ollama
-     export NL2TDL_LLM_MODEL=gemma:2b
-     export NL2TDL_LLM_ENDPOINT=http://localhost:11434
-     python main.py
-     ```
+### Option 1: Google Gemini API (Recommended - Cloud-based, Easy Setup)
 
-- Hugging Face Transformers:
-  1. Install dependencies:
-     ```bash
-     pip install transformers accelerate torch --extra-index-url https://download.pytorch.org/whl/cpu
-     ```
-  2. Set environment variables:
-     ```bash
-     export NL2TDL_LLM_PROVIDER=hf
-     export NL2TDL_LLM_MODEL=google/gemma-2b-it
-     # optional: NL2TDL_LLM_DEVICE=cuda:0
-     python main.py
-     ```
+**장점**: 설치 불필요, 빠른 응답, 무료 할당량 제공
 
-Behavior:
+1. **API 키 발급**:
+   - https://aistudio.google.com/app/apikey 접속
+   - "Create API Key" 버튼 클릭
+   - 생성된 API 키 복사
+
+2. **패키지 설치**:
+   ```bash
+   pip install google-generativeai
+   ```
+
+3. **API 키 설정 및 실행**:
+   ```bash
+   # API 키 설정
+   export GEMINI_API_KEY="your-api-key-here"
+   
+   # 방법 1: 환경변수 사용
+   export NL2TDL_LLM_PROVIDER=gemini
+   export NL2TDL_LLM_MODEL=gemini-1.5-flash  # 또는 gemini-1.5-pro
+   python main.py -r "로봇으로 박스를 A에서 B로 옮겨줘"
+   
+   # 방법 2: 명령줄 인자 사용
+   python main.py --provider gemini --llm-model gemini-1.5-flash -r "로봇으로 박스를 A에서 B로 옮겨줘"
+   ```
+
+4. **연결 테스트**:
+   ```bash
+   python test_gemini_api.py
+   ```
+   
+   테스트 스크립트가 다음을 확인합니다:
+   - ✓ API 키가 올바르게 설정되었는지
+   - ✓ 필수 패키지가 설치되었는지
+   - ✓ Gemini API 연결이 작동하는지
+   - ✓ NL2TDL 시스템과 통합이 되는지
+
+**사용 가능한 모델**:
+- `gemini-1.5-flash` (추천): 빠르고 효율적, 대부분의 작업에 적합
+- `gemini-1.5-pro`: 더 강력하지만 느림, 복잡한 분석에 적합
+- `gemini-2.0-flash-exp`: 실험적 최신 모델
+
+**할당량**: 무료 tier에서 분당 15 요청, 일일 1,500 요청 제공
+
+---
+
+### Option 2: Ollama (Local)
+
+로컬에서 실행되는 모델을 사용하려면:
+
+1. Install Ollama and pull a Gemma model (e.g., `gemma:2b`).
+2. Set environment variables before running:
+   ```bash
+   export NL2TDL_LLM_PROVIDER=ollama
+   export NL2TDL_LLM_MODEL=gemma:2b
+   export NL2TDL_LLM_ENDPOINT=http://localhost:11434
+   python main.py
+   ```
+
+---
+
+### Option 3: Hugging Face Transformers (Local)
+
+1. Install dependencies:
+   ```bash
+   pip install transformers accelerate torch --extra-index-url https://download.pytorch.org/whl/cpu
+   ```
+2. Set environment variables:
+   ```bash
+   export NL2TDL_LLM_PROVIDER=hf
+   export NL2TDL_LLM_MODEL=google/gemma-2b-it
+   # optional: NL2TDL_LLM_DEVICE=cuda:0
+   python main.py
+   ```
+
+---
+
+### Fallback Behavior
+
 - If environment variables are not set or the model call fails, the system falls back to the built-in heuristic parser.
 - The LLM is prompted to output a strict JSON with fields accepted by the pipeline (actions, objects, locations, constraints like `payload_kg`, `reach_m`).
