@@ -14,15 +14,27 @@ from .models import RequirementAnalysisResult
 from .llm_client import BaseLLM
 
 # Simple keyword dictionary for quick heuristics.
+# Korean keywords are included for better multilingual support
 ACTION_KEYWORDS = {
-    "pick": ["pick", "grasp", "grab", "collect", "lift"],
-    "place": ["place", "put", "set", "drop"],
-    "move": ["move", "transfer", "carry", "deliver"],
-    "wait": ["wait", "hold"],
+    "pick": ["pick", "grasp", "grab", "collect", "lift", "잡", "집", "들", "픽업"],
+    "place": ["place", "put", "set", "drop", "놓", "내려놓", "배치", "플레이스"],
+    "move": ["move", "carry", "deliver", "이동", "운반"],
+    "wait": ["wait", "hold", "대기", "기다"],
+    # Composite action: transfer implies pick+move+place
+    # Include conjugations of Korean verbs (옮기다 -> 옮겨, 옮기, 옮긴, etc.)
+    "transfer": ["옮기", "옮겨", "옮긴", "전달", "이송", "transfer"],
 }
 
-OBJECT_PATTERN = re.compile(r"(object|box|cup|component|part|tool|payload)", re.IGNORECASE)
-LOCATION_PATTERN = re.compile(r"from ([\w-]+) to ([\w-]+)", re.IGNORECASE)
+OBJECT_PATTERN = re.compile(
+    r"(object|box|cup|component|part|tool|payload|박스|컵|부품|공구|물체|제품)",
+    re.IGNORECASE
+)
+LOCATION_PATTERN = re.compile(
+    r"([\w가-힣-]+)(?:에서|에)\s+(?:.*?)\s*([\w가-힣-]+)(?:로|까지|으로)",
+    re.IGNORECASE
+)
+# Also support English pattern
+LOCATION_PATTERN_EN = re.compile(r"from ([\w-]+) to ([\w-]+)", re.IGNORECASE)
 PAYLOAD_PATTERN = re.compile(r"(\d+(?:\.\d+)?)\s*(?:kg|kilograms?)", re.IGNORECASE)
 REACH_PATTERN = re.compile(r"reach(?:es)?\s*(\d+(?:\.\d+)?)\s*(?:mm|millimeters?|cm|centimeters?|m|meters?)",
                            re.IGNORECASE)
@@ -58,23 +70,60 @@ def normalize_distance(value: float, unit: str) -> float:
 
 
 def detect_actions(requirement: str) -> List[str]:
+    """Detect actions from requirement text, expanding composite actions."""
     actions: List[str] = []
     lower_requirement = requirement.lower()
+    has_transfer = False
+    
     for canonical, synonyms in ACTION_KEYWORDS.items():
         if any(keyword in lower_requirement for keyword in synonyms):
-            actions.append(canonical)
+            if canonical == "transfer":
+                has_transfer = True
+            else:
+                actions.append(canonical)
+    
+    # If transfer action detected, expand to pick+move+place
+    if has_transfer:
+        # Replace move with the full pick-and-place sequence
+        if "move" in actions:
+            actions.remove("move")
+        # Add the complete sequence if not already present
+        for action in ["pick", "move", "place"]:
+            if action not in actions:
+                actions.append(action)
+    
     return actions or ["analyze"]
 
 
 def detect_object_terms(requirement: str) -> List[str]:
-    return list({match.group(0).lower() for match in OBJECT_PATTERN.finditer(requirement)})
+    """Detect object terms including Korean object names."""
+    objects = list({match.group(0) for match in OBJECT_PATTERN.finditer(requirement)})
+    
+    # Also look for Korean pattern: object_name followed by object marker (을/를/이/가)
+    korean_object_pattern = re.compile(r"([\w가-힣]+)[을를이가]", re.UNICODE)
+    for match in korean_object_pattern.finditer(requirement):
+        obj = match.group(1)
+        # Filter out common particles and verbs
+        if obj not in ["로봇", "이용", "에서"] and len(obj) > 1:
+            if obj not in objects:
+                objects.append(obj)
+    
+    return objects
 
 
 def detect_locations(requirement: str) -> Tuple[str | None, str | None]:
+    """Detect source and target locations from requirement text."""
+    # Try Korean pattern first
     match = LOCATION_PATTERN.search(requirement)
-    if not match:
-        return None, None
-    return match.group(1), match.group(2)
+    if match:
+        return match.group(1), match.group(2)
+    
+    # Try English pattern
+    match = LOCATION_PATTERN_EN.search(requirement)
+    if match:
+        return match.group(1), match.group(2)
+    
+    return None, None
 
 
 def extract_payload(requirement: str) -> float | None:
