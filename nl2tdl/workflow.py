@@ -53,6 +53,7 @@ class NL2TDLWorkflow:
             analysis=analysis,
             manufacturer=self.manufacturer,
             model=self.model,
+            llm=self.llm,
         )
 
         validation_report = build_validation_report(tdl_document)

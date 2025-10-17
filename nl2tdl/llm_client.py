@@ -85,6 +85,17 @@ class BaseLLM:
     def analyze_requirement(self, requirement: str) -> RequirementAnalysisResult:
         raise NotImplementedError
 
+    def generate_json(self, prompt: str, max_output_tokens: int = 2048) -> str:
+        """Generate a JSON payload from the model based on the given prompt.
+
+        Implementations should return a string representation of the first
+        well-formed JSON object contained in the model's response. The default
+        implementation raises ``NotImplementedError`` so that concrete LLM
+        clients can opt-in to more advanced prompting workflows.
+        """
+
+        raise NotImplementedError
+
 
 @dataclass
 class OllamaLLM(BaseLLM):
@@ -204,10 +215,24 @@ class GeminiLLM(BaseLLM):
         
         # Test connection
         print(f"✓ Gemini API 연결 성공! (모델: {self.model})", file=sys.stderr)
-    
+
+    def _build_safety_settings(self):
+        """Return permissive safety settings used for generation calls."""
+
+        return {
+            self._genai.types.HarmCategory.HARM_CATEGORY_HARASSMENT:
+                self._genai.types.HarmBlockThreshold.BLOCK_NONE,
+            self._genai.types.HarmCategory.HARM_CATEGORY_HATE_SPEECH:
+                self._genai.types.HarmBlockThreshold.BLOCK_NONE,
+            self._genai.types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT:
+                self._genai.types.HarmBlockThreshold.BLOCK_NONE,
+            self._genai.types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT:
+                self._genai.types.HarmBlockThreshold.BLOCK_NONE,
+        }
+
     def test_connection(self) -> bool:
         """Test the API connection with a simple prompt.
-        
+
         Returns:
             True if connection is successful, False otherwise.
         """
@@ -233,17 +258,8 @@ class GeminiLLM(BaseLLM):
         
         try:
             # Configure safety settings to avoid blocking
-            safety_settings = {
-                self._genai.types.HarmCategory.HARM_CATEGORY_HARASSMENT: 
-                    self._genai.types.HarmBlockThreshold.BLOCK_NONE,
-                self._genai.types.HarmCategory.HARM_CATEGORY_HATE_SPEECH: 
-                    self._genai.types.HarmBlockThreshold.BLOCK_NONE,
-                self._genai.types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: 
-                    self._genai.types.HarmBlockThreshold.BLOCK_NONE,
-                self._genai.types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: 
-                    self._genai.types.HarmBlockThreshold.BLOCK_NONE,
-            }
-            
+            safety_settings = self._build_safety_settings()
+
             response = self._model.generate_content(
                 prompt,
                 generation_config=self._genai.types.GenerationConfig(
@@ -265,6 +281,29 @@ class GeminiLLM(BaseLLM):
         except Exception as e:
             print(f"\n✗ Gemini API 호출 중 오류 발생: {e}", file=sys.stderr)
             raise RuntimeError(f"Gemini API call failed: {e}") from e
+
+    def generate_json(self, prompt: str, max_output_tokens: int = 2048) -> str:
+        """Generate JSON text for advanced prompting workflows."""
+
+        try:
+            safety_settings = self._build_safety_settings()
+            response = self._model.generate_content(
+                prompt,
+                generation_config=self._genai.types.GenerationConfig(
+                    max_output_tokens=max_output_tokens,
+                    temperature=self.temperature,
+                ),
+                safety_settings=safety_settings,
+            )
+
+            if not response.parts:
+                finish_reason = response.candidates[0].finish_reason.name if response.candidates else "UNKNOWN"
+                raise ValueError(f"API returned no content. Finish reason: {finish_reason}")
+
+            output = response.text.strip()
+            return _extract_first_json_block(output)
+        except Exception as e:
+            raise RuntimeError(f"Gemini JSON generation failed: {e}") from e
 
 
 def get_llm_from_env() -> BaseLLM | None:
