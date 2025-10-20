@@ -26,6 +26,15 @@ python main.py
 
 The script prints the analysis results, generated TDL, validation/verification feedback, and a ranked list of candidate robots.
 
+To persist the generated artifacts, you can additionally request on-disk outputs:
+
+```bash
+python main.py -r "박스를 이동해줘" --write-tdl output.tdl --write-job output.job
+```
+
+- `--write-tdl` saves the raw TDL script.
+- `--write-job` exports a vendor-oriented job file that approximates Doosan DRL syntax for quick hand-off to programming tools.
+
 ## Optional: LLM Integration
 
 You can enable LLM-assisted requirement analysis to improve parsing quality. Three providers are supported:

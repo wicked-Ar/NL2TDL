@@ -16,6 +16,7 @@ from nl2tdl.llm_client import (
     get_llm_from_env,
 )
 from nl2tdl.workflow import NL2TDLWorkflow
+from nl2tdl.job_file_exporter import render_job_file
 
 
 def _read_requirement_from_inputs(
@@ -81,6 +82,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--write-tdl",
         type=Path,
         help="Optional path to write the TDL text output",
+    )
+    parser.add_argument(
+        "--write-job",
+        type=Path,
+        help="Optional path to write a vendor job-file approximation",
     )
 
     # LLM selection (env remains the default)
@@ -165,6 +171,9 @@ def main() -> None:
         print(tdl_text)
         if args.write_tdl:
             Path(args.write_tdl).write_text(tdl_text, encoding="utf-8")
+        if args.write_job:
+            job_text = render_job_file(result.tdl_document)
+            Path(args.write_job).write_text(job_text, encoding="utf-8")
         return
 
     print("=== Requirement Analysis ===")
@@ -174,6 +183,9 @@ def main() -> None:
     print(tdl_text)
     if args.write_tdl:
         Path(args.write_tdl).write_text(tdl_text, encoding="utf-8")
+    if args.write_job:
+        job_text = render_job_file(result.tdl_document)
+        Path(args.write_job).write_text(job_text, encoding="utf-8")
     print("\n=== Validation Report ===")
     print(result.validation_report)
     print("\n=== Verification Report ===")
