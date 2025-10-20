@@ -22,6 +22,34 @@ from .prompting import (
 from .rag import get_parsing_instructions, get_tdl_syntax_reference
 
 
+# Simple location database for common named positions
+# Format: location_name -> (x, y, z, rx, ry, rz)
+DEFAULT_LOCATION_MAP: Dict[str, tuple[float, float, float, float, float, float]] = {
+    # English locations
+    "a": (0, 0, 50, 0, 0, 0),
+    "b": (300, 200, 50, 0, 0, 0),
+    "home": (0, 0, 200, 0, 0, 0),
+    "pickup": (100, 0, 50, 0, 0, 0),
+    "dropoff": (100, 300, 50, 0, 0, 0),
+    # Korean/Mixed locations
+    "시작": (0, 0, 50, 0, 0, 0),
+    "목표": (300, 200, 50, 0, 0, 0),
+}
+
+
+def _get_position_coords(location: str | None, default: tuple[float, float, float, float, float, float]) -> tuple[float, float, float, float, float, float]:
+    """Get coordinates for a named location, falling back to default if not found."""
+    if not location:
+        return default
+    
+    # Try case-insensitive lookup
+    location_lower = location.lower()
+    if location_lower in DEFAULT_LOCATION_MAP:
+        return DEFAULT_LOCATION_MAP[location_lower]
+    
+    return default
+
+
 COMMAND_LIBRARY: Dict[str, CommandDefinition] = {
     "SetJointVelocity": CommandDefinition(
         name="SetJointVelocity",
@@ -260,51 +288,108 @@ def _generate_tdl_document_with_llm(
     return TDLDocument(header=header, goals=goals, commands=command_definitions)
 
 
-def _pick_command_names(actions: List[str]) -> List[str]:
+def _pick_command_names(actions: List[str], source_loc: str | None = None, target_loc: str | None = None) -> List[str]:
+    """Generate command sequence based on detected actions and locations.
+    
+    For pick-and-place operations, generates a complete sequence:
+    1. Move to source location
+    2. Grasp object
+    3. Lift object
+    4. Move to target location
+    5. Lower object
+    6. Release object
+    """
     sequence: List[str] = []
+    
+    # Get actual coordinates for locations
+    source_coords = _get_position_coords(source_loc, (0, 0, 50, 0, 0, 0))
+    target_coords = _get_position_coords(target_loc, (300, 200, 50, 0, 0, 0))
+    
+    # Comment markers for better readability
+    source_comment = f"source_{source_loc}" if source_loc else "source_position"
+    target_comment = f"target_{target_loc}" if target_loc else "target_position"
+    
+    # Z-offsets for safety
+    APPROACH_HEIGHT = 100  # mm above the position
+    GRASP_HEIGHT = 10      # mm above surface for grasping
+    
     if "pick" in actions:
-        sequence.extend(
-            [
-                "SetTool(\"gripper\")",
-                "MoveLinear(PosX(0,0,0,0,0,0), 100, 50, \"gripper\", 0.0)",
-                "GraspObject(40)",
-            ]
-        )
-    if "move" in actions:
+        # Approach source location (above)
+        sx, sy, sz, srx, sry, srz = source_coords
         sequence.append(
-            "MoveLinear(PosX(100,200,300,0,0,0), 100, 50, \"gripper\", 0.1)"
+            f"MoveLinear(PosX({sx},{sy},{sz + APPROACH_HEIGHT},{srx},{sry},{srz}), 100, 50, \"gripper\", 0.1)  // Approach {source_comment} (above)"
         )
+        # Move down to grasp position
+        sequence.append(
+            f"MoveLinear(PosX({sx},{sy},{sz + GRASP_HEIGHT},{srx},{sry},{srz}), 50, 30, \"gripper\", 0.0)  // Move to {source_comment} (grasp height)"
+        )
+        # Grasp the object
+        sequence.append(
+            "GraspObject(40)  // Close gripper"
+        )
+        # Lift object
+        sequence.append(
+            f"MoveLinear(PosX({sx},{sy},{sz + APPROACH_HEIGHT},{srx},{sry},{srz}), 100, 50, \"gripper\", 0.1)  // Lift from {source_comment}"
+        )
+    
+    if "move" in actions:
+        # Move to target location (above)
+        tx, ty, tz, trx, try_, trz = target_coords
+        sequence.append(
+            f"MoveLinear(PosX({tx},{ty},{tz + APPROACH_HEIGHT},{trx},{try_},{trz}), 100, 50, \"gripper\", 0.1)  // Move to {target_comment} (above)"
+        )
+    
     if "place" in actions:
-        sequence.extend(
-            [
-                "WaitForDigitalInput(11, ON, 10.0)",
-                "ReleaseObject()",
-            ]
+        # Lower to place position
+        tx, ty, tz, trx, try_, trz = target_coords
+        sequence.append(
+            f"MoveLinear(PosX({tx},{ty},{tz + GRASP_HEIGHT},{trx},{try_},{trz}), 50, 30, \"gripper\", 0.0)  // Lower to {target_comment} (place height)"
         )
+        # Release the object
+        sequence.append(
+            "ReleaseObject()  // Open gripper"
+        )
+        # Retract
+        sequence.append(
+            f"MoveLinear(PosX({tx},{ty},{tz + APPROACH_HEIGHT},{trx},{try_},{trz}), 100, 50, \"gripper\", 0.1)  // Retract from {target_comment}"
+        )
+    
     return sequence
 
 
 def _build_goals_heuristic(analysis: RequirementAnalysisResult) -> List[GoalNode]:
+    """Build GOAL nodes with proper pick-and-place sequence."""
     initialize_commands = ["SetJointVelocity(30)", "SetTool(\"gripper\")"]
-    execute_commands = _pick_command_names(analysis.detected_actions)
+    
+    # Generate execute commands with location info
+    execute_commands = _pick_command_names(
+        analysis.detected_actions,
+        analysis.source_location,
+        analysis.target_location
+    )
     execute_commands = [
         cmd for cmd in execute_commands if not cmd.startswith("ReleaseCompliance(")
     ]
+    
     finalize_commands = ["ReleaseCompliance()"]
 
-    description_suffix = (
-        f" for {', '.join(analysis.objects)}" if analysis.objects else ""
-    )
+    # Build descriptions
+    object_desc = f" {', '.join(analysis.objects)}" if analysis.objects else " object"
+    location_desc = ""
+    if analysis.source_location and analysis.target_location:
+        location_desc = f" from {analysis.source_location} to {analysis.target_location}"
+    elif analysis.target_location:
+        location_desc = f" to {analysis.target_location}"
 
     return [
         GoalNode(
             name="Initialize_Process",
-            description=f"Prepare robot configuration{description_suffix}",
+            description=f"Prepare robot and gripper for{object_desc}",
             commands=initialize_commands,
         ),
         GoalNode(
             name="Execute_Process",
-            description="Execute primary task sequence",
+            description=f"Transfer{object_desc}{location_desc}",
             commands=execute_commands,
         ),
         GoalNode(
