@@ -81,12 +81,22 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--write-tdl",
         type=Path,
-        help="Optional path to write the TDL text output",
+        nargs="?",
+        const=Path("tdl_output.tdl"),
+        help=(
+            "Write the generated TDL text to disk. Provide an optional path; defaults to "
+            "tdl_output.tdl when omitted."
+        ),
     )
     parser.add_argument(
         "--write-job",
         type=Path,
-        help="Optional path to write a vendor job-file approximation",
+        nargs="?",
+        const=Path("job_output.job"),
+        help=(
+            "Write the rendered job file to disk. Provide an optional path; defaults to "
+            "job_output.job when omitted."
+        ),
     )
 
     # LLM selection (env remains the default)
@@ -155,6 +165,13 @@ def main() -> None:
     requirement = _read_requirement_from_inputs(args.requirement, args.file)
     llm = resolve_llm_from_args(args)
 
+    def _write_output(path: Optional[Path], content: str) -> None:
+        if not path:
+            return
+        resolved = Path(path)
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        resolved.write_text(content, encoding="utf-8")
+
     workflow = NL2TDLWorkflow(
         manufacturer=args.manufacturer,
         model=args.model_name,
@@ -169,11 +186,10 @@ def main() -> None:
     if args.tdl_only:
         tdl_text = result.tdl_document.to_text()
         print(tdl_text)
-        if args.write_tdl:
-            Path(args.write_tdl).write_text(tdl_text, encoding="utf-8")
+        _write_output(args.write_tdl, tdl_text)
         if args.write_job:
             job_text = render_job_file(result.tdl_document)
-            Path(args.write_job).write_text(job_text, encoding="utf-8")
+            _write_output(args.write_job, job_text)
         return
 
     print("=== Requirement Analysis ===")
@@ -181,11 +197,10 @@ def main() -> None:
     print("\n=== Generated TDL ===")
     tdl_text = result.tdl_document.to_text()
     print(tdl_text)
-    if args.write_tdl:
-        Path(args.write_tdl).write_text(tdl_text, encoding="utf-8")
+    _write_output(args.write_tdl, tdl_text)
     if args.write_job:
         job_text = render_job_file(result.tdl_document)
-        Path(args.write_job).write_text(job_text, encoding="utf-8")
+        _write_output(args.write_job, job_text)
     print("\n=== Validation Report ===")
     print(result.validation_report)
     print("\n=== Verification Report ===")

@@ -29,11 +29,30 @@ The script prints the analysis results, generated TDL, validation/verification f
 To persist the generated artifacts, you can additionally request on-disk outputs:
 
 ```bash
-python main.py -r "박스를 이동해줘" --write-tdl output.tdl --write-job output.job
+python main.py -r "박스를 이동해줘" --write-tdl --write-job
 ```
 
-- `--write-tdl` saves the raw TDL script.
-- `--write-job` exports a vendor-oriented job file that approximates Doosan DRL syntax for quick hand-off to programming tools.
+- `--write-tdl` saves the raw TDL script (default filename: `tdl_output.tdl`).
+- `--write-job` exports a vendor-oriented job file that approximates Doosan DRL syntax for quick hand-off to programming tools (default filename: `job_output.job`).
+
+### Command-line Arguments
+
+The CLI exposes additional switches so you can customize inputs, robot metadata, and LLM behavior:
+
+| Flag | Purpose |
+|------|---------|
+| `-r, --requirement` | Directly pass the natural-language instruction on the command line. If omitted the tool checks `--file`, then STDIN, and finally prompts interactively. |
+| `-f, --file` | Read the requirement text from a UTF-8 file. |
+| `--manufacturer` | Override the robot manufacturer recorded in the TDL header (default: `doosan`). |
+| `--model-name` | Override the robot model stored in the TDL header (default: `h2017`). |
+| `--robot-db` | Provide a custom robot specification database JSON used by the selector (default: `robots_db.json`). |
+| `--tdl-only` | Print only the generated TDL without the analysis/validation sections. |
+| `--write-tdl` | Persist the TDL text to a file. If no path is provided, the tool saves to `tdl_output.tdl`. |
+| `--write-job` | Persist a Doosan-style job approximation generated from the TDL. If no path is provided, the tool saves to `job_output.job`. |
+| `--provider` | Choose an explicit LLM backend (`ollama`, `hf`, `gemini`, or `none`). When omitted the provider is inferred from the environment. |
+| `--llm-model` | Specify the model identifier for the chosen provider. |
+| `--llm-endpoint` | Point an Ollama client to a non-default base URL. |
+| `--llm-device` | Select the Hugging Face execution device (e.g., `cuda:0`). |
 
 ## Optional: LLM Integration
 
